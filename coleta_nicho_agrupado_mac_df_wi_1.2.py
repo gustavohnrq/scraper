@@ -224,6 +224,7 @@ def bs_parser() -> str:
 
 PARSER = bs_parser()
 _PREVIOUS_FRONTMOST_APP = ""
+_FIREFOX_BLOCKER_PROC = None
 
 
 # ---------- util de SO ----------
@@ -315,9 +316,72 @@ def get_frontmost_app_name() -> str:
         return ""
 
 
+def start_firefox_blocker() -> None:
+    """Mantém o Firefox oculto continuamente durante toda a execução."""
+    global _FIREFOX_BLOCKER_PROC
+
+    if HEADLESS or not BLOCK_FIREFOX_WINDOW or not sys.platform.startswith("darwin"):
+        return
+
+    if _FIREFOX_BLOCKER_PROC and _FIREFOX_BLOCKER_PROC.poll() is None:
+        return
+
+    if _PREVIOUS_FRONTMOST_APP and _PREVIOUS_FRONTMOST_APP.lower() != "firefox":
+        app_name = _PREVIOUS_FRONTMOST_APP.replace('"', '\\"')
+        script = [
+            'repeat',
+            'tell application "System Events" to if exists process "Firefox" then set visible of process "Firefox" to false',
+            f'tell application "{app_name}" to activate',
+            'delay 0.15',
+            'end repeat',
+        ]
+    else:
+        script = [
+            'repeat',
+            'tell application "System Events" to if exists process "Firefox" then set visible of process "Firefox" to false',
+            'delay 0.15',
+            'end repeat',
+        ]
+
+    cmd = ["osascript"]
+    for line in script:
+        cmd.extend(["-e", line])
+
+    try:
+        _FIREFOX_BLOCKER_PROC = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        _FIREFOX_BLOCKER_PROC = None
+
+
+def stop_firefox_blocker() -> None:
+    global _FIREFOX_BLOCKER_PROC
+
+    proc = _FIREFOX_BLOCKER_PROC
+    _FIREFOX_BLOCKER_PROC = None
+    if not proc:
+        return
+
+    try:
+        proc.terminate()
+        proc.wait(timeout=2)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
 def block_firefox_window(driver) -> None:
     """Oculta a interface do Firefox sem alterar a lógica principal do scraping."""
     if HEADLESS or not BLOCK_FIREFOX_WINDOW:
+        return
+
+    if sys.platform.startswith("darwin"):
+        start_firefox_blocker()
         return
 
     try:
@@ -326,17 +390,7 @@ def block_firefox_window(driver) -> None:
         pass
 
     try:
-        if sys.platform.startswith("darwin"):
-            script = [
-                "osascript",
-                "-e",
-                'tell application "System Events" to if exists process "Firefox" then set visible of process "Firefox" to false',
-            ]
-            if _PREVIOUS_FRONTMOST_APP and _PREVIOUS_FRONTMOST_APP.lower() != "firefox":
-                app_name = _PREVIOUS_FRONTMOST_APP.replace('"', '\\"')
-                script.extend(["-e", f'tell application "{app_name}" to activate'])
-            subprocess.run(script, check=False, capture_output=True)
-        elif sys.platform.startswith("win"):
+        if sys.platform.startswith("win"):
             ps_script = r"""
 Add-Type @"
 using System;
@@ -2386,6 +2440,7 @@ def main():
 
     if not HEADLESS and BLOCK_FIREFOX_WINDOW:
         _PREVIOUS_FRONTMOST_APP = get_frontmost_app_name()
+        start_firefox_blocker()
 
     print("Copiando perfil para pasta temporária...")
     tmp_profile = copy_profile_to_temp(ORIG_PROFILE)
@@ -2634,6 +2689,7 @@ def main():
             driver.quit()
         except Exception:
             pass
+        stop_firefox_blocker()
 
         # Tempo total
         try:
