@@ -177,6 +177,7 @@ HIDE_FIREFOX_WINDOW = True
 HIDE_FIREFOX_WINDOW_SIZE = 1
 HIDE_FIREFOX_WINDOW_X = -32000
 HIDE_FIREFOX_WINDOW_Y = -32000
+HIDE_FIREFOX_OS_REFRESH = 0.40
 TEMPO_ESPERA = 1.6  # espera “curta” p/ seletores (o safe_get faz o resto)  # espera “curta” p/ seletores (o safe_get faz o resto)
 
 RETRIES_HTTP = 3
@@ -226,6 +227,7 @@ def bs_parser() -> str:
 
 
 PARSER = bs_parser()
+_LAST_FIREFOX_HIDE_TS = 0.0
 
 
 # ---------- util de SO ----------
@@ -311,6 +313,8 @@ def hide_firefox_window(driver) -> None:
     if HEADLESS or not HIDE_FIREFOX_WINDOW:
         return
 
+    global _LAST_FIREFOX_HIDE_TS
+
     try:
         driver.set_window_rect(
             x=HIDE_FIREFOX_WINDOW_X,
@@ -336,15 +340,22 @@ def hide_firefox_window(driver) -> None:
     except Exception:
         pass
 
+    now = time.monotonic()
+    if now - _LAST_FIREFOX_HIDE_TS < HIDE_FIREFOX_OS_REFRESH:
+        return
+    _LAST_FIREFOX_HIDE_TS = now
+
     try:
         if sys.platform.startswith("darwin"):
             subprocess.run(
                 [
                     "osascript",
                     "-e",
-                    'tell application "Firefox" to set bounds of front window to {-32000, -32000, -31999, -31999}',
+                    'tell application "Firefox" to set miniaturized of every window to true',
                     "-e",
                     'tell application "Firefox" to hide',
+                    "-e",
+                    'tell application "System Events" to set visible of process "Firefox" to false',
                 ],
                 check=False,
                 capture_output=True,
