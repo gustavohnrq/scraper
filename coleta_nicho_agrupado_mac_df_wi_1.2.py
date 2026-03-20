@@ -173,6 +173,7 @@ INICIO_PAG = 1
 FIM_PAG = 999999  # auto-stop por páginas vazias/sem novos links
 
 HEADLESS = False
+BLOCK_FIREFOX_WINDOW = True
 TEMPO_ESPERA = 1.6  # espera “curta” p/ seletores (o safe_get faz o resto)  # espera “curta” p/ seletores (o safe_get faz o resto)
 
 RETRIES_HTTP = 3
@@ -222,6 +223,8 @@ def bs_parser() -> str:
 
 
 PARSER = bs_parser()
+_PREVIOUS_FRONTMOST_APP = ""
+_FIREFOX_BLOCKER_PROC = None
 
 
 # ---------- util de SO ----------
@@ -294,6 +297,139 @@ def resolve_geckodriver_path() -> str:
     )
 
 
+def get_frontmost_app_name() -> str:
+    if not sys.platform.startswith("darwin"):
+        return ""
+    try:
+        cp = subprocess.run(
+            [
+                "osascript",
+                "-e",
+                'tell application "System Events" to get name of first application process whose frontmost is true',
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        return (cp.stdout or "").strip()
+    except Exception:
+        return ""
+
+
+def start_firefox_blocker() -> None:
+    """Mantém o Firefox oculto continuamente durante toda a execução."""
+    global _FIREFOX_BLOCKER_PROC
+
+    if HEADLESS or not BLOCK_FIREFOX_WINDOW or not sys.platform.startswith("darwin"):
+        return
+
+    if _FIREFOX_BLOCKER_PROC and _FIREFOX_BLOCKER_PROC.poll() is None:
+        return
+
+    if _PREVIOUS_FRONTMOST_APP and _PREVIOUS_FRONTMOST_APP.lower() != "firefox":
+        app_name = _PREVIOUS_FRONTMOST_APP.replace('"', '\\"')
+        script = [
+            'repeat',
+            'tell application "System Events" to if exists process "Firefox" then set visible of process "Firefox" to false',
+            f'tell application "{app_name}" to activate',
+            'delay 0.15',
+            'end repeat',
+        ]
+    else:
+        script = [
+            'repeat',
+            'tell application "System Events" to if exists process "Firefox" then set visible of process "Firefox" to false',
+            'delay 0.15',
+            'end repeat',
+        ]
+
+    cmd = ["osascript"]
+    for line in script:
+        cmd.extend(["-e", line])
+
+    try:
+        _FIREFOX_BLOCKER_PROC = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        _FIREFOX_BLOCKER_PROC = None
+
+
+def stop_firefox_blocker() -> None:
+    global _FIREFOX_BLOCKER_PROC
+
+    proc = _FIREFOX_BLOCKER_PROC
+    _FIREFOX_BLOCKER_PROC = None
+    if not proc:
+        return
+
+    try:
+        proc.terminate()
+        proc.wait(timeout=2)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def block_firefox_window(driver) -> None:
+    """Oculta a interface do Firefox sem alterar a lógica principal do scraping."""
+    if HEADLESS or not BLOCK_FIREFOX_WINDOW:
+        return
+
+    if sys.platform.startswith("darwin"):
+        start_firefox_blocker()
+        return
+
+    try:
+        driver.minimize_window()
+    except Exception:
+        pass
+
+    try:
+        if sys.platform.startswith("win"):
+            ps_script = r"""
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32ShowWindowAsync {
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+}
+"@
+Get-Process firefox -ErrorAction SilentlyContinue | ForEach-Object {
+    if ($_.MainWindowHandle -ne 0) {
+        [Win32ShowWindowAsync]::ShowWindowAsync($_.MainWindowHandle, 0) | Out-Null
+    }
+}
+"""
+            subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_script],
+                check=False,
+                capture_output=True,
+            )
+        else:
+            from shutil import which
+
+            if which("wmctrl"):
+                subprocess.run(
+                    ["wmctrl", "-r", "Mozilla Firefox", "-b", "add,hidden,skip_taskbar"],
+                    check=False,
+                    capture_output=True,
+                )
+            elif which("xdotool"):
+                subprocess.run(
+                    ["xdotool", "search", "--onlyvisible", "--class", "firefox", "windowunmap", "%@"],
+                    check=False,
+                    capture_output=True,
+                )
+    except Exception:
+        pass
+
+
 def launch_firefox_with_profile(profile_path: str) -> webdriver.Firefox:
     opts = FirefoxOptions()
     if HEADLESS:
@@ -334,6 +470,7 @@ def launch_firefox_with_profile(profile_path: str) -> webdriver.Firefox:
     driver = webdriver.Firefox(service=service, options=opts)
     driver.set_page_load_timeout(PAGELOAD_TIMEOUT)
     driver.set_script_timeout(SCRIPT_TIMEOUT)
+    block_firefox_window(driver)
     return driver
 
 
@@ -1893,18 +2030,22 @@ def safe_get(driver, url: str, wait_css=("main", ".container", "section", "artic
     for i in range(tries):
         try:
             driver.get(url)
+            block_firefox_window(driver)
 
             # 1) gatilho rápido
             if wait_any(driver, list(wait_css), timeout=FAST_NAV_WAIT):
+                block_firefox_window(driver)
                 return True
 
             # 2) fallback padrão
             if wait_any(driver, list(wait_css), timeout=FULL_NAV_WAIT):
+                block_firefox_window(driver)
                 return True
 
             # 3) micro-pausa e tenta de novo
             time.sleep(0.18 + random.random() * 0.10)
             if wait_any(driver, list(wait_css), timeout=FULL_NAV_WAIT):
+                block_firefox_window(driver)
                 return True
 
         except TimeoutException:
@@ -1915,8 +2056,10 @@ def safe_get(driver, url: str, wait_css=("main", ".container", "section", "artic
 
             # tenta o gatilho curto e o padrão após stop
             if wait_any(driver, list(wait_css), timeout=FAST_NAV_WAIT):
+                block_firefox_window(driver)
                 return True
             if wait_any(driver, list(wait_css), timeout=FULL_NAV_WAIT):
+                block_firefox_window(driver)
                 return True
 
         except WebDriverException:
@@ -2254,6 +2397,7 @@ def main():
     # =========================
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument('--headless', action='store_true', help='Rodar Firefox em modo headless')
+    ap.add_argument('--show-browser', action='store_true', help='Mantém a janela do Firefox visível durante a coleta')
     ap.add_argument('--max-pages', type=int, default=None, help='Sobrescreve FIM_PAG (limite de páginas)')
     ap.add_argument('--jobs', type=str, default=None, help='(Opcional) Caminho para um arquivo .py com JOBS=...')
     args, _ = ap.parse_known_args()
@@ -2263,9 +2407,11 @@ def main():
     t_start = time.perf_counter()
 
 
-    global HEADLESS, FIM_PAG, JOBS
+    global HEADLESS, FIM_PAG, JOBS, BLOCK_FIREFOX_WINDOW, _PREVIOUS_FRONTMOST_APP
     if args.headless:
         HEADLESS = True
+    if args.show_browser:
+        BLOCK_FIREFOX_WINDOW = False
     if args.max_pages is not None:
         FIM_PAG = int(args.max_pages)
     if args.jobs:
@@ -2290,6 +2436,11 @@ def main():
     print("Parser BS4:", PARSER)
     print("Perfil base detectado automaticamente:")
     print("  ORIG_PROFILE =", ORIG_PROFILE)
+    print(f"Janela do Firefox: {'bloqueada/oculta' if (not HEADLESS and BLOCK_FIREFOX_WINDOW) else ('headless' if HEADLESS else 'visível')}")
+
+    if not HEADLESS and BLOCK_FIREFOX_WINDOW:
+        _PREVIOUS_FRONTMOST_APP = get_frontmost_app_name()
+        start_firefox_blocker()
 
     print("Copiando perfil para pasta temporária...")
     tmp_profile = copy_profile_to_temp(ORIG_PROFILE)
@@ -2538,6 +2689,7 @@ def main():
             driver.quit()
         except Exception:
             pass
+        stop_firefox_blocker()
 
         # Tempo total
         try:
