@@ -174,6 +174,9 @@ FIM_PAG = 999999  # auto-stop por páginas vazias/sem novos links
 
 HEADLESS = False
 HIDE_FIREFOX_WINDOW = True
+HIDE_FIREFOX_WINDOW_SIZE = 1
+HIDE_FIREFOX_WINDOW_X = -32000
+HIDE_FIREFOX_WINDOW_Y = -32000
 TEMPO_ESPERA = 1.6  # espera “curta” p/ seletores (o safe_get faz o resto)  # espera “curta” p/ seletores (o safe_get faz o resto)
 
 RETRIES_HTTP = 3
@@ -299,13 +302,34 @@ def hide_firefox_window(driver) -> None:
     """Tenta minimizar/ocultar a janela do Firefox sem interromper o scraping.
 
     Estratégia:
-      1) minimize_window() do Selenium (quando suportado)
-      2) tentativa best-effort por SO para mandar o app para segundo plano
+      1) deixa a janela minúscula
+      2) move a janela para fora da tela
+      3) minimiza e tenta ocultar por SO
 
     Se qualquer etapa falhar, o scraping continua normalmente.
     """
     if HEADLESS or not HIDE_FIREFOX_WINDOW:
         return
+
+    try:
+        driver.set_window_rect(
+            x=HIDE_FIREFOX_WINDOW_X,
+            y=HIDE_FIREFOX_WINDOW_Y,
+            width=HIDE_FIREFOX_WINDOW_SIZE,
+            height=HIDE_FIREFOX_WINDOW_SIZE,
+        )
+    except Exception:
+        pass
+
+    try:
+        driver.set_window_position(HIDE_FIREFOX_WINDOW_X, HIDE_FIREFOX_WINDOW_Y)
+    except Exception:
+        pass
+
+    try:
+        driver.set_window_size(HIDE_FIREFOX_WINDOW_SIZE, HIDE_FIREFOX_WINDOW_SIZE)
+    except Exception:
+        pass
 
     try:
         driver.minimize_window()
@@ -317,6 +341,8 @@ def hide_firefox_window(driver) -> None:
             subprocess.run(
                 [
                     "osascript",
+                    "-e",
+                    'tell application "Firefox" to set bounds of front window to {-32000, -32000, -31999, -31999}',
                     "-e",
                     'tell application "Firefox" to hide',
                 ],
@@ -367,6 +393,9 @@ def launch_firefox_with_profile(profile_path: str) -> webdriver.Firefox:
     opts = FirefoxOptions()
     if HEADLESS:
         opts.add_argument("-headless")
+    elif HIDE_FIREFOX_WINDOW:
+        opts.add_argument(f"--width={HIDE_FIREFOX_WINDOW_SIZE}")
+        opts.add_argument(f"--height={HIDE_FIREFOX_WINDOW_SIZE}")
 
     # performance / fingerprint (mantém seu setup)
     opts.set_preference("permissions.default.image", 2)
@@ -1962,19 +1991,24 @@ def safe_get(driver, url: str, wait_css=("main", ".container", "section", "artic
 
     for i in range(tries):
         try:
+            hide_firefox_window(driver)
             driver.get(url)
+            hide_firefox_window(driver)
 
             # 1) gatilho rápido
             if wait_any(driver, list(wait_css), timeout=FAST_NAV_WAIT):
+                hide_firefox_window(driver)
                 return True
 
             # 2) fallback padrão
             if wait_any(driver, list(wait_css), timeout=FULL_NAV_WAIT):
+                hide_firefox_window(driver)
                 return True
 
             # 3) micro-pausa e tenta de novo
             time.sleep(0.18 + random.random() * 0.10)
             if wait_any(driver, list(wait_css), timeout=FULL_NAV_WAIT):
+                hide_firefox_window(driver)
                 return True
 
         except TimeoutException:
@@ -1985,8 +2019,10 @@ def safe_get(driver, url: str, wait_css=("main", ".container", "section", "artic
 
             # tenta o gatilho curto e o padrão após stop
             if wait_any(driver, list(wait_css), timeout=FAST_NAV_WAIT):
+                hide_firefox_window(driver)
                 return True
             if wait_any(driver, list(wait_css), timeout=FULL_NAV_WAIT):
+                hide_firefox_window(driver)
                 return True
 
         except WebDriverException:
