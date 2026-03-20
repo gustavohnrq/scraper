@@ -173,6 +173,7 @@ INICIO_PAG = 1
 FIM_PAG = 999999  # auto-stop por páginas vazias/sem novos links
 
 HEADLESS = False
+HIDE_FIREFOX_WINDOW = True
 TEMPO_ESPERA = 1.6  # espera “curta” p/ seletores (o safe_get faz o resto)  # espera “curta” p/ seletores (o safe_get faz o resto)
 
 RETRIES_HTTP = 3
@@ -294,6 +295,74 @@ def resolve_geckodriver_path() -> str:
     )
 
 
+def hide_firefox_window(driver) -> None:
+    """Tenta minimizar/ocultar a janela do Firefox sem interromper o scraping.
+
+    Estratégia:
+      1) minimize_window() do Selenium (quando suportado)
+      2) tentativa best-effort por SO para mandar o app para segundo plano
+
+    Se qualquer etapa falhar, o scraping continua normalmente.
+    """
+    if HEADLESS or not HIDE_FIREFOX_WINDOW:
+        return
+
+    try:
+        driver.minimize_window()
+    except Exception:
+        pass
+
+    try:
+        if sys.platform.startswith("darwin"):
+            subprocess.run(
+                [
+                    "osascript",
+                    "-e",
+                    'tell application "Firefox" to hide',
+                ],
+                check=False,
+                capture_output=True,
+            )
+        elif sys.platform.startswith("win"):
+            ps_script = r"""
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32ShowWindowAsync {
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+}
+"@
+Get-Process firefox -ErrorAction SilentlyContinue | ForEach-Object {
+    if ($_.MainWindowHandle -ne 0) {
+        [Win32ShowWindowAsync]::ShowWindowAsync($_.MainWindowHandle, 6) | Out-Null
+    }
+}
+"""
+            subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_script],
+                check=False,
+                capture_output=True,
+            )
+        else:
+            from shutil import which
+
+            if which("wmctrl"):
+                subprocess.run(
+                    ["wmctrl", "-r", "Mozilla Firefox", "-b", "add,hidden"],
+                    check=False,
+                    capture_output=True,
+                )
+            elif which("xdotool"):
+                subprocess.run(
+                    ["xdotool", "search", "--onlyvisible", "--class", "firefox", "windowminimize", "%@"],
+                    check=False,
+                    capture_output=True,
+                )
+    except Exception:
+        pass
+
+
 def launch_firefox_with_profile(profile_path: str) -> webdriver.Firefox:
     opts = FirefoxOptions()
     if HEADLESS:
@@ -334,6 +403,7 @@ def launch_firefox_with_profile(profile_path: str) -> webdriver.Firefox:
     driver = webdriver.Firefox(service=service, options=opts)
     driver.set_page_load_timeout(PAGELOAD_TIMEOUT)
     driver.set_script_timeout(SCRIPT_TIMEOUT)
+    hide_firefox_window(driver)
     return driver
 
 
@@ -2254,6 +2324,7 @@ def main():
     # =========================
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument('--headless', action='store_true', help='Rodar Firefox em modo headless')
+    ap.add_argument('--show-browser', action='store_true', help='Mantém a janela do Firefox visível durante a coleta')
     ap.add_argument('--max-pages', type=int, default=None, help='Sobrescreve FIM_PAG (limite de páginas)')
     ap.add_argument('--jobs', type=str, default=None, help='(Opcional) Caminho para um arquivo .py com JOBS=...')
     args, _ = ap.parse_known_args()
@@ -2263,9 +2334,11 @@ def main():
     t_start = time.perf_counter()
 
 
-    global HEADLESS, FIM_PAG, JOBS
+    global HEADLESS, FIM_PAG, JOBS, HIDE_FIREFOX_WINDOW
     if args.headless:
         HEADLESS = True
+    if args.show_browser:
+        HIDE_FIREFOX_WINDOW = False
     if args.max_pages is not None:
         FIM_PAG = int(args.max_pages)
     if args.jobs:
@@ -2290,6 +2363,7 @@ def main():
     print("Parser BS4:", PARSER)
     print("Perfil base detectado automaticamente:")
     print("  ORIG_PROFILE =", ORIG_PROFILE)
+    print(f"Janela do Firefox: {'oculta/minimizada' if (not HEADLESS and HIDE_FIREFOX_WINDOW) else ('headless' if HEADLESS else 'visível')}")
 
     print("Copiando perfil para pasta temporária...")
     tmp_profile = copy_profile_to_temp(ORIG_PROFILE)
