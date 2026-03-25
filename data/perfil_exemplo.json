@@ -1,0 +1,13 @@
+{
+  "tipo_cliente": "familia",
+  "regioes_prioritarias": ["Asa Norte"],
+  "regioes_aceitaveis": ["Sudoeste", "Noroeste"],
+  "preco_max": 1250000,
+  "quartos_exatos": 3,
+  "suite_obrigatoria": true,
+  "segundo_banheiro_completo_obrigatorio": true,
+  "vaga_obrigatoria": true,
+  "metragem_min": 85,
+  "observacoes": "Cliente família. Busca boa planta e imóvel com potencial real de moradia.",
+  "quantidade_max_resultados": 5
+}
