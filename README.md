@@ -10,7 +10,7 @@ Sistema local em Python para curadoria comercial de imóveis residenciais (foco 
 - Geração de mensagem comercial WhatsApp no padrão solicitado.
 - Geração de texto URL-encoded e link `wa.me`.
 - Exportação em JSON, CSV e TXT em pasta `output/<timestamp>/`.
-- Execução via CLI e interface local com Streamlit (opcional).
+- Execução via CLI e interface web local leve com Flask.
 
 ## Requisitos
 - Python 3.11+ (compatível com Python 3.12)
@@ -23,32 +23,24 @@ pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 
-## Instalação da interface web (Streamlit)
+## Instalação da interface web local
 ```bash
-# Ainda dentro da mesma venv
-pip install --only-binary=:all: pyarrow
 pip install -r requirements-web.txt
 ```
-
-### Se ocorrer erro de build do `pyarrow` no Python 3.12 (macOS)
-Use exatamente esta sequência:
-```bash
-pip install --upgrade pip setuptools wheel
-pip install --only-binary=:all: pyarrow
-pip install -r requirements-web.txt
-```
-
-Se seu ambiente corporativo bloquear wheels ou proxy, rode somente o modo CLI (não depende de Streamlit/PyArrow).
 
 ## Execução via CLI
 ```bash
 python main.py --csv data/imoveis_exemplo.csv --perfil data/perfil_exemplo.json --phone 5561999999999
 ```
 
-## Execução via Web (Streamlit)
+## Execução via Web local
 ```bash
-streamlit run app.py
+python app.py
 ```
+Acesse: `http://127.0.0.1:8501`
+
+## Nota sobre o erro com Streamlit/PyArrow
+Se você estava executando `streamlit run app.py` e encontrou `segmentation fault`, esta versão migra para Flask para evitar dependências nativas que causavam esse problema no seu ambiente Python 3.12/macOS.
 
 ## Estrutura
 ```text
