@@ -125,46 +125,22 @@ ORIG_PROFILE = guess_firefox_profile_dir()
 # reais desejados (ex.: r"C:\coletas\dfimoveis\saida").
 # -----------------------------------------
 JOBS: list[dict[str, str]] = [
-    #{
-    #    "name": "aluguel_AsaNorte",
-    #    "url": "https://www.dfimoveis.com.br/aluguel/df/brasilia/asa-norte/apartamento/2,3-quartos",
-    #    "output_dir": str(BASE_DIR),
-    #    "debug_root_dir": str(BASE_DIR),
-    #    "diff_output_dir": str(BASE_DIR),
-    #},
     {
-                # ===== DF =====        
-        "name": "venda_AsaNorte",
-        "url": "https://www.dfimoveis.com.br/venda/df/brasilia/asa-norte/apartamento/2,3,4-quartos?valorinicial=1000000&valorfinal=1750000",
-        "output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Asa Norte/DF/Coletas",
+        # ===== DF (link geral; único CSV final) =====
+        "name": "venda_DF_geral",
+        "url": "https://www.dfimoveis.com.br/venda/df/brasilia/apartamento/2,3,4-quartos?valorinicial=1000000&valorfinal=1750000",
+        "output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/DF/Coletas",
+        "output_csv": "/Users/macbook/Desktop/Corretagem_2026/Coletas/DF/Coletas/dfimoveis_resultado_DF_geral.csv",
         "debug_root_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Debug_DF",
-        "diff_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Asa Norte/DF/Resultados",
-
-                # ===== WI =====
-        "wi_url": "https://www.wimoveis.com.br/venda/apartamentos/df/brasilia/asa-norte/desde-2-ate-4-quartos?price=1000000,1750000",
-        "wi_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Asa Norte/WI/Coletas",
-        "wi_diff_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Asa Norte/WI/Resultados",
-        "wi_debug_root_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Debug/WI",
+        "diff_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/DF/Resultados",
     },
-    #{
-    #    "name": "aluguel_Noroeste",
-    #    "url": "https://www.dfimoveis.com.br/aluguel/df/brasilia/noroeste/apartamento/2,3-quartos",
-    #    "output_dir": str(BASE_DIR),
-    #    "debug_root_dir": str(BASE_DIR),
-    #    "diff_output_dir": str(BASE_DIR),
-    #},
     {
-                        # ===== DF =====        
-        "name": "venda_Noroeste",
-        "url": "https://www.dfimoveis.com.br/venda/df/brasilia/noroeste/apartamento/2,3-quartos?valorinicial=1000000&valorfinal=1750000",
-        "output_dir": "//Users/macbook/Desktop/Corretagem_2026/Coletas/Noroeste/DF/Coletas",
-        "debug_root_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Debug_DF",
-        "diff_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Noroeste/DF/Resultados",
-
-                        # ===== WI =====
-        "wi_url": "https://www.wimoveis.com.br/venda/apartamentos/df/brasilia/noroeste/desde-2-ate-4-quartos?price=1000000,1750000",
-        "wi_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Noroeste/WI/Coletas",
-        "wi_diff_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Asa Norte/WI/Resultados",
+        # ===== WI (link geral; único CSV final) =====
+        "name": "venda_WI_geral",
+        "wi_url": "https://www.wimoveis.com.br/venda/apartamentos/df/brasilia/desde-2-ate-4-quartos?price=1000000,1750000",
+        "wi_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/WI/Coletas",
+        "wi_output_csv": "/Users/macbook/Desktop/Corretagem_2026/Coletas/WI/Coletas/wimoveis_resultado_WI_geral.csv",
+        "wi_diff_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/WI/Resultados",
         "wi_debug_root_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Debug_WI",
     },
 ]
@@ -674,8 +650,11 @@ def parse_detail(html: str, url: str) -> dict:
         blob = m_filtro.group(1)
 
         def grab(k: str) -> str:
-            m = re.search(rf'"{k}"\s*:\s*"?(.*?)"?(,|\s|$)', blob)
-            return m.group(1) if m else ""
+            m = re.search(rf'"{k}"\s*:\s*"([^"]*)"', blob)
+            if m:
+                return m.group(1).strip()
+            m = re.search(rf'"{k}"\s*:\s*([^,}}]+)', blob)
+            return (m.group(1).strip() if m else "")
 
         data["codigo"] = data["codigo"] or grab("IdExterno") or ""
         data["oferta"] = (grab("Negocio") or "").title() or data["oferta"]
