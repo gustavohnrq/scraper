@@ -10,18 +10,35 @@ Sistema local em Python para curadoria comercial de imóveis residenciais (foco 
 - Geração de mensagem comercial WhatsApp no padrão solicitado.
 - Geração de texto URL-encoded e link `wa.me`.
 - Exportação em JSON, CSV e TXT em pasta `output/<timestamp>/`.
-- Execução via CLI e interface local com Streamlit.
+- Execução via CLI e interface local com Streamlit (opcional).
 
 ## Requisitos
-- Python 3.11+
-- Dependências em `requirements.txt`
+- Python 3.11+ (compatível com Python 3.12)
 
-## Instalação
+## Instalação (modo CLI - recomendado)
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Linux/macOS
+pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
+
+## Instalação da interface web (Streamlit)
+```bash
+# Ainda dentro da mesma venv
+pip install --only-binary=:all: pyarrow
+pip install -r requirements-web.txt
+```
+
+### Se ocorrer erro de build do `pyarrow` no Python 3.12 (macOS)
+Use exatamente esta sequência:
+```bash
+pip install --upgrade pip setuptools wheel
+pip install --only-binary=:all: pyarrow
+pip install -r requirements-web.txt
+```
+
+Se seu ambiente corporativo bloquear wheels ou proxy, rode somente o modo CLI (não depende de Streamlit/PyArrow).
 
 ## Execução via CLI
 ```bash
@@ -39,6 +56,7 @@ main.py
 app.py
 config.py
 requirements.txt
+requirements-web.txt
 README.md
 /data
 /output

@@ -1,0 +1,4 @@
+-r requirements.txt
+streamlit>=1.37.0,<2.0.0
+# Fix para Python 3.12 em macOS: usar wheel pré-compilado.
+pyarrow>=17.0.0
