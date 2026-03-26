@@ -125,46 +125,20 @@ ORIG_PROFILE = guess_firefox_profile_dir()
 # reais desejados (ex.: r"C:\coletas\dfimoveis\saida").
 # -----------------------------------------
 JOBS: list[dict[str, str]] = [
-    #{
-    #    "name": "aluguel_AsaNorte",
-    #    "url": "https://www.dfimoveis.com.br/aluguel/df/brasilia/asa-norte/apartamento/2,3-quartos",
-    #    "output_dir": str(BASE_DIR),
-    #    "debug_root_dir": str(BASE_DIR),
-    #    "diff_output_dir": str(BASE_DIR),
-    #},
     {
-                # ===== DF =====        
-        "name": "venda_AsaNorte",
-        "url": "https://www.dfimoveis.com.br/venda/df/brasilia/asa-norte/apartamento/2,3,4-quartos?valorinicial=1000000&valorfinal=1750000",
-        "output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Asa Norte/DF/Coletas",
+        # ===== DF (link geral; único CSV final) =====
+        "name": "venda_DF_geral",
+        "url": "https://www.dfimoveis.com.br/venda/df/brasilia/apartamento/2,3,4-quartos?valorinicial=1000000&valorfinal=1750000",
+        "output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/DF/Coletas",
         "debug_root_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Debug_DF",
-        "diff_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Asa Norte/DF/Resultados",
-
-                # ===== WI =====
-        "wi_url": "https://www.wimoveis.com.br/venda/apartamentos/df/brasilia/asa-norte/desde-2-ate-4-quartos?price=1000000,1750000",
-        "wi_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Asa Norte/WI/Coletas",
-        "wi_diff_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Asa Norte/WI/Resultados",
-        "wi_debug_root_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Debug/WI",
+        "diff_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/DF/Resultados",
     },
-    #{
-    #    "name": "aluguel_Noroeste",
-    #    "url": "https://www.dfimoveis.com.br/aluguel/df/brasilia/noroeste/apartamento/2,3-quartos",
-    #    "output_dir": str(BASE_DIR),
-    #    "debug_root_dir": str(BASE_DIR),
-    #    "diff_output_dir": str(BASE_DIR),
-    #},
     {
-                        # ===== DF =====        
-        "name": "venda_Noroeste",
-        "url": "https://www.dfimoveis.com.br/venda/df/brasilia/noroeste/apartamento/2,3-quartos?valorinicial=1000000&valorfinal=1750000",
-        "output_dir": "//Users/macbook/Desktop/Corretagem_2026/Coletas/Noroeste/DF/Coletas",
-        "debug_root_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Debug_DF",
-        "diff_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Noroeste/DF/Resultados",
-
-                        # ===== WI =====
-        "wi_url": "https://www.wimoveis.com.br/venda/apartamentos/df/brasilia/noroeste/desde-2-ate-4-quartos?price=1000000,1750000",
-        "wi_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Noroeste/WI/Coletas",
-        "wi_diff_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Asa Norte/WI/Resultados",
+        # ===== WI (link geral; único CSV final) =====
+        "name": "venda_WI_geral",
+        "wi_url": "https://www.wimoveis.com.br/venda/apartamentos/df/brasilia/desde-2-ate-4-quartos?price=1000000,1750000",
+        "wi_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/WI/Coletas",
+        "wi_diff_output_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/WI/Resultados",
         "wi_debug_root_dir": "/Users/macbook/Desktop/Corretagem_2026/Coletas/Debug_WI",
     },
 ]
@@ -180,6 +154,7 @@ HTTP_CONNECT_TIMEOUT = 7
 HTTP_READ_TIMEOUT = 20
 
 RECICLE_CADA = 35
+RECICLE_CADA_FAST = 50  # modo rápido: recicla menos vezes para reduzir overhead local
 AUTO_STOP_EMPTY_PAGES = 2
 AUTO_STOP_NO_NEW_PAGES = 3
 
@@ -207,6 +182,26 @@ DETAIL_BACKOFF_BASE = 0.55
 DEBUG_SAVE_FAIL_HTML = True
 DEBUG_DIR = BASE_DIR / "debug_detalhes"  # vai ser sobrescrito por JOB
 DEBUG_MAX_BODY_CHARS_IN_REASON = 2200  # para não lotar txt
+
+# Modo de operação local (rápido = ergonomia/perf conservadora)
+FAST_MODE = False
+
+# Flush em lote (sem perder segurança: sempre flush no fechamento/final da etapa)
+FLUSH_EVERY_LINK_PAGES = 1
+FLUSH_EVERY_DETAILS = 1
+
+# Sleeps curtos no caminho de sucesso (não mexe em backoffs de captcha/erros)
+SUCCESS_SLEEP_MIN = 0.02
+SUCCESS_SLEEP_MAX = 0.06
+SUCCESS_PAGE_SLEEP_MIN = 0.05
+SUCCESS_PAGE_SLEEP_MAX = 0.15
+
+# Ergonomia de janela local (especialmente útil no macOS)
+FIREFOX_WINDOW_WIDTH = 980
+FIREFOX_WINDOW_HEIGHT = 720
+FIREFOX_WINDOW_POS_X = 24
+FIREFOX_WINDOW_POS_Y = 56
+MACOS_HIDE_FIREFOX = False
 # =======================
 
 
@@ -334,7 +329,42 @@ def launch_firefox_with_profile(profile_path: str) -> webdriver.Firefox:
     driver = webdriver.Firefox(service=service, options=opts)
     driver.set_page_load_timeout(PAGELOAD_TIMEOUT)
     driver.set_script_timeout(SCRIPT_TIMEOUT)
+    _configure_firefox_window(driver)
+    if MACOS_HIDE_FIREFOX:
+        hide_firefox_macos()
     return driver
+
+
+def _configure_firefox_window(driver):
+    """Ajuste de ergonomia local: janela menor e fora da área central de trabalho."""
+    if HEADLESS:
+        return
+    try:
+        driver.set_window_size(FIREFOX_WINDOW_WIDTH, FIREFOX_WINDOW_HEIGHT)
+        driver.set_window_position(FIREFOX_WINDOW_POS_X, FIREFOX_WINDOW_POS_Y)
+    except Exception:
+        pass
+
+
+def hide_firefox_macos():
+    """Oculta/minimiza Firefox no macOS sem encerrar o processo Selenium."""
+    if not sys.platform.startswith("darwin"):
+        return
+    try:
+        subprocess.run(
+            ["osascript", "-e", 'tell application "Firefox" to set visible to false'],
+            check=False,
+            capture_output=True,
+            timeout=2,
+        )
+        subprocess.run(
+            ["osascript", "-e", 'tell application "System Events" to tell process "Firefox" to set miniaturized of every window to true'],
+            check=False,
+            capture_output=True,
+            timeout=2,
+        )
+    except Exception:
+        pass
 
 
 def montar_url_pagina(base: str, pagina: int) -> str:
@@ -380,6 +410,17 @@ def page_source_stabilized(curr_len: int, last_len: int, stable_count: int, delt
     else:
         stable_count = 0
     return (stable_count >= need), curr_len, stable_count
+
+
+def flush_if_needed(fh, pending: int, every: int) -> int:
+    """Flush em lote (N) com fallback seguro para flush imediato."""
+    if pending <= 0:
+        return 0
+    step = max(1, int(every or 1))
+    if pending >= step:
+        fh.flush()
+        return 0
+    return pending
 
 
 # ---------- debug helpers ----------
@@ -674,8 +715,11 @@ def parse_detail(html: str, url: str) -> dict:
         blob = m_filtro.group(1)
 
         def grab(k: str) -> str:
-            m = re.search(rf'"{k}"\s*:\s*"?(.*?)"?(,|\s|$)', blob)
-            return m.group(1) if m else ""
+            m = re.search(rf'"{k}"\s*:\s*"([^"]*)"', blob)
+            if m:
+                return m.group(1).strip()
+            m = re.search(rf'"{k}"\s*:\s*([^,}}]+)', blob)
+            return (m.group(1).strip() if m else "")
 
         data["codigo"] = data["codigo"] or grab("IdExterno") or ""
         data["oferta"] = (grab("Negocio") or "").title() or data["oferta"]
@@ -1592,6 +1636,7 @@ def etapa1_coletar_links_wimoveis(driver, base_lista: str, arq_links: Path) -> t
     if primeira_links:
         w_links.writerow(["link"])
         f_links.flush()
+    pending_link_pages = 0
 
     empty_pages = 0
     no_new_pages = 0
@@ -1672,7 +1717,8 @@ def etapa1_coletar_links_wimoveis(driver, base_lista: str, arq_links: Path) -> t
                 links_all.append(h)
                 w_links.writerow([h])
             if work:
-                f_links.flush()
+                pending_link_pages += 1
+                pending_link_pages = flush_if_needed(f_links, pending_link_pages, FLUSH_EVERY_LINK_PAGES)
 
             print(f"  [+] Coletados {len(work)} links novos | total acumulado: {len(links_all)}")
 
@@ -1680,6 +1726,8 @@ def etapa1_coletar_links_wimoveis(driver, base_lista: str, arq_links: Path) -> t
 
     finally:
         try:
+            if pending_link_pages > 0:
+                f_links.flush()
             f_links.close()
         except Exception:
             pass
@@ -1691,6 +1739,7 @@ def etapa1_coletar_links_wimoveis(driver, base_lista: str, arq_links: Path) -> t
 def etapa2_extrair_detalhes_wimoveis(driver, links: list[str], writer: csv.DictWriter, fcsv, base_lista: str):
     total_ok = 0
     sess = driver_to_session(driver, default_domain="www.wimoveis.com.br")
+    pending_rows = 0
 
     for idx, href in enumerate(links, start=1):
         ok_reg = False
@@ -1706,7 +1755,8 @@ def etapa2_extrair_detalhes_wimoveis(driver, links: list[str], writer: csv.DictW
                 if is_detail_loaded_wimoveis(html):
                     reg = parse_detail_wimoveis(html, href)
                     writer.writerow(reg)
-                    fcsv.flush()
+                    pending_rows += 1
+                    pending_rows = flush_if_needed(fcsv, pending_rows, FLUSH_EVERY_DETAILS)
                     total_ok += 1
                     ok_reg = True
                     break
@@ -1721,7 +1771,7 @@ def etapa2_extrair_detalhes_wimoveis(driver, links: list[str], writer: csv.DictW
         if ok_reg:
             if idx % 20 == 0:
                 print(f"[ETAPA 2 - WI] Progresso: {idx}/{len(links)} | gravados={total_ok}")
-            time.sleep(0.02 + random.random() * 0.06)
+            time.sleep(SUCCESS_SLEEP_MIN + random.random() * SUCCESS_SLEEP_MAX)
             continue
 
         # debug do HTTP
@@ -1759,7 +1809,8 @@ def etapa2_extrair_detalhes_wimoveis(driver, links: list[str], writer: csv.DictW
 
                 reg = parse_detail_wimoveis(detail_html, href)
                 writer.writerow(reg)
-                fcsv.flush()
+                pending_rows += 1
+                pending_rows = flush_if_needed(fcsv, pending_rows, FLUSH_EVERY_DETAILS)
                 total_ok += 1
                 ok_reg = True
                 break
@@ -1774,11 +1825,13 @@ def etapa2_extrair_detalhes_wimoveis(driver, links: list[str], writer: csv.DictW
         if idx % 20 == 0:
             print(f"[ETAPA 2 - WI] Progresso: {idx}/{len(links)} | gravados={total_ok}")
 
-        time.sleep(0.02 + random.random() * 0.06)
+        time.sleep(SUCCESS_SLEEP_MIN + random.random() * SUCCESS_SLEEP_MAX)
 
         if idx > 0 and idx % RECICLE_CADA == 0:
             sess = driver_to_session(driver, default_domain="www.wimoveis.com.br")
 
+    if pending_rows > 0:
+        fcsv.flush()
     return total_ok, driver
 
 
@@ -2055,6 +2108,7 @@ def etapa1_coletar_links(driver, base_lista: str, arq_links: Path) -> tuple[list
     if primeira_links:
         w_links.writerow(["link"])
         f_links.flush()
+    pending_link_pages = 0
 
     empty_pages = 0
     no_new_pages = 0
@@ -2133,15 +2187,18 @@ def etapa1_coletar_links(driver, base_lista: str, arq_links: Path) -> tuple[list
                 links_all.append(h)
                 w_links.writerow([h])
             if work:
-                f_links.flush()
+                pending_link_pages += 1
+                pending_link_pages = flush_if_needed(f_links, pending_link_pages, FLUSH_EVERY_LINK_PAGES)
 
             print(f"  [+] Coletados {len(work)} links novos | total acumulado: {len(links_all)}")
-            time.sleep(0.05 + random.random() * 0.15)
+            time.sleep(SUCCESS_PAGE_SLEEP_MIN + random.random() * SUCCESS_PAGE_SLEEP_MAX)
 
         return links_all, driver
 
     finally:
         try:
+            if pending_link_pages > 0:
+                f_links.flush()
             f_links.close()
         except Exception:
             pass
@@ -2153,6 +2210,7 @@ def etapa1_coletar_links(driver, base_lista: str, arq_links: Path) -> tuple[list
 def etapa2_extrair_detalhes(driver, links: list[str], writer: csv.DictWriter, fcsv, base_lista: str):
     total_ok = 0
     sess = driver_to_session(driver)
+    pending_rows = 0
 
     for idx, href in enumerate(links, start=1):
         ok_reg = False
@@ -2168,7 +2226,8 @@ def etapa2_extrair_detalhes(driver, links: list[str], writer: csv.DictWriter, fc
                 if is_detail_loaded(html):
                     reg = parse_detail(html, href)
                     writer.writerow(reg)
-                    fcsv.flush()
+                    pending_rows += 1
+                    pending_rows = flush_if_needed(fcsv, pending_rows, FLUSH_EVERY_DETAILS)
                     total_ok += 1
                     ok_reg = True
                     break
@@ -2183,7 +2242,7 @@ def etapa2_extrair_detalhes(driver, links: list[str], writer: csv.DictWriter, fc
         if ok_reg:
             if idx % 20 == 0:
                 print(f"[ETAPA 2] Progresso: {idx}/{len(links)} | gravados={total_ok}")
-            time.sleep(0.02 + random.random() * 0.06)
+            time.sleep(SUCCESS_SLEEP_MIN + random.random() * SUCCESS_SLEEP_MAX)
             continue
 
         # debug do HTTP
@@ -2215,7 +2274,8 @@ def etapa2_extrair_detalhes(driver, links: list[str], writer: csv.DictWriter, fc
 
                 reg = parse_detail(detail_html, href)
                 writer.writerow(reg)
-                fcsv.flush()
+                pending_rows += 1
+                pending_rows = flush_if_needed(fcsv, pending_rows, FLUSH_EVERY_DETAILS)
                 total_ok += 1
                 ok_reg = True
                 break
@@ -2230,11 +2290,13 @@ def etapa2_extrair_detalhes(driver, links: list[str], writer: csv.DictWriter, fc
         if idx % 20 == 0:
             print(f"[ETAPA 2] Progresso: {idx}/{len(links)} | gravados={total_ok}")
 
-        time.sleep(0.02 + random.random() * 0.06)
+        time.sleep(SUCCESS_SLEEP_MIN + random.random() * SUCCESS_SLEEP_MAX)
 
         if idx > 0 and idx % RECICLE_CADA == 0:
             sess = driver_to_session(driver)
 
+    if pending_rows > 0:
+        fcsv.flush()
     return total_ok, driver
 
 
@@ -2256,6 +2318,10 @@ def main():
     ap.add_argument('--headless', action='store_true', help='Rodar Firefox em modo headless')
     ap.add_argument('--max-pages', type=int, default=None, help='Sobrescreve FIM_PAG (limite de páginas)')
     ap.add_argument('--jobs', type=str, default=None, help='(Opcional) Caminho para um arquivo .py com JOBS=...')
+    ap.add_argument('--fast-mode', action='store_true', help='Modo rápido local (menos flush/debug; mantém estratégia de scraping)')
+    ap.add_argument('--flush-every-details', type=int, default=None, help='Flush do CSV de detalhes a cada N registros (padrão: 1 normal, 20 fast)')
+    ap.add_argument('--flush-every-link-pages', type=int, default=None, help='Flush do CSV de links a cada N páginas com links novos (padrão: 1 normal, 3 fast)')
+    ap.add_argument('--mac-hide-firefox', action='store_true', help='Oculta/minimiza Firefox no macOS após iniciar driver')
     args, _ = ap.parse_known_args()
     # =========================
     # Timer total de execução
@@ -2263,9 +2329,28 @@ def main():
     t_start = time.perf_counter()
 
 
-    global HEADLESS, FIM_PAG, JOBS
+    global HEADLESS, FIM_PAG, JOBS, FAST_MODE, DEBUG_SAVE_FAIL_HTML
+    global FLUSH_EVERY_DETAILS, FLUSH_EVERY_LINK_PAGES, RECICLE_CADA, MACOS_HIDE_FIREFOX
+    global SUCCESS_SLEEP_MIN, SUCCESS_SLEEP_MAX, SUCCESS_PAGE_SLEEP_MIN, SUCCESS_PAGE_SLEEP_MAX
     if args.headless:
         HEADLESS = True
+    if args.fast_mode:
+        FAST_MODE = True
+        DEBUG_SAVE_FAIL_HTML = False
+        FLUSH_EVERY_DETAILS = 20
+        FLUSH_EVERY_LINK_PAGES = 3
+        RECICLE_CADA = RECICLE_CADA_FAST
+        # Redução conservadora apenas em caminhos de sucesso.
+        SUCCESS_SLEEP_MIN = 0.01
+        SUCCESS_SLEEP_MAX = 0.03
+        SUCCESS_PAGE_SLEEP_MIN = 0.02
+        SUCCESS_PAGE_SLEEP_MAX = 0.08
+    if args.flush_every_details is not None:
+        FLUSH_EVERY_DETAILS = max(1, int(args.flush_every_details))
+    if args.flush_every_link_pages is not None:
+        FLUSH_EVERY_LINK_PAGES = max(1, int(args.flush_every_link_pages))
+    if args.mac_hide_firefox:
+        MACOS_HIDE_FIREFOX = True
     if args.max_pages is not None:
         FIM_PAG = int(args.max_pages)
     if args.jobs:
@@ -2296,6 +2381,12 @@ def main():
 
     print("Subindo Firefox...")
     driver = launch_firefox_with_profile(tmp_profile)
+    print(
+        f"Config execução | headless={HEADLESS} fast_mode={FAST_MODE} "
+        f"debug_fail_html={DEBUG_SAVE_FAIL_HTML} flush_details={FLUSH_EVERY_DETAILS} "
+        f"flush_link_pages={FLUSH_EVERY_LINK_PAGES} recicle_cada={RECICLE_CADA} "
+        f"mac_hide_firefox={MACOS_HIDE_FIREFOX}"
+    )
 
     campos = [
         "codigo", "data_coleta", "creci", "anunciante", "oferta", "tipo",
